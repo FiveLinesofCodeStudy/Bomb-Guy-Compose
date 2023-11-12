@@ -6,7 +6,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.MaterialTheme
 import androidx.compose.runtime.*
-import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Rect
@@ -62,7 +61,7 @@ val map = arrayOf(
     arrayOf(1, 1, 1, 1, 1, 1, 1, 1, 1)
 )
 
-fun explode(x: Int, y: Int, type: Tile, mapState: MutableState<Array<Array<Int>>>, bombsState: MutableState<Int>) {
+fun explode(x: Int, y: Int, type: Tile) {
     val map = mapState.value
     if (map[y][x] == Tile.STONE.ordinal) {
         if (Math.random() < 0.1) map[y][x] = Tile.EXTRA_BOMB.ordinal
@@ -81,75 +80,64 @@ fun explode(x: Int, y: Int, type: Tile, mapState: MutableState<Array<Array<Int>>
 fun move(
     dx: Int,
     dy: Int,
-    mapState: MutableState<Array<Array<Int>>>,
-    playerxState: MutableState<Int>,
-    playeryState: MutableState<Int>,
     bombsState: MutableState<Int>
 ) {
     val map = mapState.value
-    val playerx = playerxState.value
-    val playery = playeryState.value
 
     if (
-        map[playery + dy][playerx + dx] == Tile.AIR.ordinal ||
-        map[playery + dy][playerx + dx] == Tile.FIRE.ordinal
+        map[playery.value + dy][playerx.value + dx] == Tile.AIR.ordinal ||
+        map[playery.value + dy][playerx.value + dx] == Tile.FIRE.ordinal
     ) {
-        playerxState.value += dx
-        playeryState.value += dy
-    } else if (map[playery + dy][playerx + dx] == Tile.EXTRA_BOMB.ordinal) {
-        playerxState.value += dx
-        playeryState.value += dy
+        playerx.value += dx
+        playery.value += dy
+    } else if (map[playery.value + dy][playerx.value + dx] == Tile.EXTRA_BOMB.ordinal) {
+        playerx.value += dx
+        playery.value += dy
         bombsState.value += 1
-        map[playeryState.value][playerxState.value] = Tile.AIR.ordinal
+        map[playery.value][playerx.value] = Tile.AIR.ordinal
     }
 }
 
-fun placeBomb(mapState: MutableState<Array<Array<Int>>>, bombsState: MutableState<Int>, playerx: Int, playery: Int) {
+fun placeBomb(mapState: MutableState<Array<Array<Int>>>, bombsState: MutableState<Int>) {
     if (bombsState.value > 0) {
-        val map = mapState.value
-        map[playery][playerx] = Tile.BOMB.ordinal
+        mapState.value[playery.value][playerx.value] = Tile.BOMB.ordinal
         bombsState.value--
     }
 }
 
-fun update(
-    inputs: SnapshotStateList<Input>,
-    mapState: MutableState<Array<Array<Int>>>,
-    playerxState: MutableState<Int>,
-    playeryState: MutableState<Int>,
-    delayState: MutableState<Int>,
-    bombsState: MutableState<Int>,
-    gameOverState: MutableState<Boolean>
-) {
+val delayState = mutableStateOf(0)
+val bombsState = mutableStateOf(1)
+
+fun update() {
     while (!gameOverState.value && inputs.size > 0) {
         val current = inputs.removeLast()
         when (current) {
             Input.LEFT -> {
-                move(-1, 0, mapState, playerxState, playeryState, bombsState)
+                move(-1, 0, bombsState)
             }
 
             Input.RIGHT -> {
-                move(1, 0, mapState, playerxState, playeryState, bombsState)
+                move(1, 0, bombsState)
             }
 
             Input.UP -> {
-                move(0, -1, mapState, playerxState, playeryState, bombsState)
+                move(0, -1, bombsState)
             }
 
             Input.DOWN -> {
-                move(0, 1, mapState, playerxState, playeryState, bombsState)
+                move(0, 1, bombsState)
             }
 
             Input.PLACE -> {
-                placeBomb(mapState, bombsState, playerxState.value, playeryState.value)
+                placeBomb(mapState, bombsState)
             }
         }
 
     }
 
     val map = mapState.value
-    val playery = playeryState.value
-    val playerx = playerxState.value
+    val playery = playery.value
+    val playerx = playerx.value
 
     if (
         map[playery][playerx] == Tile.FIRE.ordinal ||
@@ -170,10 +158,10 @@ fun update(
             } else if (map[y][x] == Tile.BOMB_CLOSE.ordinal) {
                 map[y][x] = Tile.BOMB_REALLY_CLOSE.ordinal
             } else if (map[y][x] == Tile.BOMB_REALLY_CLOSE.ordinal) {
-                explode(x + 0, y - 1, Tile.FIRE, mapState, bombsState)
-                explode(x + 0, y + 1, Tile.FIRE, mapState, bombsState)
-                explode(x - 1, y + 0, Tile.FIRE, mapState, bombsState)
-                explode(x + 1, y + 0, Tile.FIRE, mapState, bombsState)
+                explode(x + 0, y - 1, Tile.FIRE)
+                explode(x + 0, y + 1, Tile.FIRE)
+                explode(x - 1, y + 0, Tile.FIRE)
+                explode(x + 1, y + 0, Tile.FIRE)
                 map[y][x] = Tile.FIRE.ordinal
                 bombsState.value++
             } else if (map[y][x] == Tile.TMP_FIRE.ordinal) {
@@ -217,14 +205,11 @@ fun update(
     }
 }
 
+val gameOverState = mutableStateOf(false)
+val updateState = mutableStateOf(false)
+
 @Composable
-fun draw(
-    mapState: MutableState<Array<Array<Int>>>,
-    playerxState: MutableState<Int>,
-    playeryState: MutableState<Int>,
-    gameOverState: MutableState<Boolean>,
-    updateState: MutableState<Boolean>
-) {
+fun draw() {
     val before = System.currentTimeMillis()
 
     Canvas(modifier = Modifier.width(1200.dp).height(800.dp)) {
@@ -258,9 +243,9 @@ fun draw(
 
     if (updateState.value) {
         updateState.value = false
-        RealTimeCanvas(mapState, playerxState, playeryState, gameOverState)
+        RealTimeCanvas()
     } else {
-        RealTimeCanvas(mapState, playerxState, playeryState, gameOverState)
+        RealTimeCanvas()
     }
 
     val after = System.currentTimeMillis()
@@ -276,16 +261,11 @@ fun draw(
 }
 
 @Composable
-private fun RealTimeCanvas(
-    mapState: MutableState<Array<Array<Int>>>,
-    playerxState: MutableState<Int>,
-    playeryState: MutableState<Int>,
-    gameOverState: MutableState<Boolean>
-) {
+private fun RealTimeCanvas() {
     Canvas(modifier = Modifier.width(1200.dp).height(800.dp)) {
         val map = mapState.value
-        val playerx = playerxState.value
-        val playery = playeryState.value
+        val playerX = playerx.value
+        val playerY = playery.value
 
         for (y in map.indices) {
             for (x in map[y].indices) {
@@ -329,8 +309,8 @@ private fun RealTimeCanvas(
         }
 
         val player = Rect(
-            playerx * TITLE_SIZE.toFloat(),
-            playery * TITLE_SIZE.toFloat(),
+            playerX * TITLE_SIZE.toFloat(),
+            playerY * TITLE_SIZE.toFloat(),
             TITLE_SIZE.toFloat(),
             TITLE_SIZE.toFloat()
         )
@@ -340,51 +320,26 @@ private fun RealTimeCanvas(
 }
 
 @Composable
-fun gameLoop(
-    updateState: MutableState<Boolean>,
-    inputs: SnapshotStateList<Input>,
-    playerxState: MutableState<Int>,
-    playeryState: MutableState<Int>,
-    mapState: MutableState<Array<Array<Int>>>,
-    delayState: MutableState<Int>,
-    bombsState: MutableState<Int>,
-    gameOverState: MutableState<Boolean>
-) {
-    update(inputs, mapState, playerxState, playeryState, delayState, bombsState, gameOverState)
-    draw(mapState, playerxState, playeryState, gameOverState, updateState)
+fun gameLoop() {
+    update()
+    draw()
 }
+
+val playerx = mutableStateOf(1)
+val playery = mutableStateOf(1)
+val mapState = mutableStateOf(map)
 
 @Composable
 @Preview
-fun App(inputs: SnapshotStateList<Input>) {
-
-    val playerx = remember { mutableStateOf(1) }
-    val playery = remember { mutableStateOf(1) }
-    val mapState = remember { mutableStateOf(map) }
-
-    val delay = remember { mutableStateOf(0) }
-    val bombs = remember { mutableStateOf(1) }
-    val gameOver = remember { mutableStateOf(false) }
-
-    val updateState = remember { mutableStateOf(false) }
-
+fun App() {
     MaterialTheme {
-        gameLoop(
-            updateState = updateState,
-            inputs = inputs,
-            mapState = mapState,
-            playerxState = playerx,
-            playeryState = playery,
-            delayState = delay,
-            bombsState = bombs,
-            gameOverState = gameOver
-        )
+        gameLoop()
     }
 }
 
-fun main() = application {
+val inputs = mutableStateListOf<Input>()
 
-    val inputs = remember { mutableStateListOf<Input>() }
+fun main() = application {
 
     Window(onCloseRequest = ::exitApplication, onKeyEvent = {
         if (it.key == Key.DirectionUp && it.type == KeyEventType.KeyDown) {
@@ -406,6 +361,6 @@ fun main() = application {
             false
         }
     }) {
-        App(inputs)
+        App()
     }
 }
